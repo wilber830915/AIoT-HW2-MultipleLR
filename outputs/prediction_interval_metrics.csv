@@ -1,0 +1,2 @@
+nominal_coverage,observed_test_coverage,mean_interval_width,conformal_quantile
+0.95,0.9506362779825158,0.08033026809227335,0.0401651340461367

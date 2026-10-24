@@ -1,0 +1,21 @@
+{
+  "target": "FloodProbability",
+  "candidate_feature_count": 30,
+  "feature_counts": [
+    14,
+    20,
+    25,
+    30
+  ],
+  "methods": [
+    "SelectKBest",
+    "RFE",
+    "Sequential",
+    "Lasso",
+    "Permutation"
+  ],
+  "best_method": "RFE",
+  "best_k": 20,
+  "random_state": 42,
+  "prediction_interval_alpha": 0.05
+}

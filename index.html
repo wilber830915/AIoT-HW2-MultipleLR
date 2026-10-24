@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FloodProbability：多元線性迴歸與特徵選擇探索器</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #060a13;
+      --bg-soft: #0a111e;
+      --surface: #111a2c;
+      --surface-2: #17233a;
+      --surface-hover: #1d2c48;
+      --border: rgba(125, 150, 205, .16);
+      --border-soft: rgba(125, 150, 205, .09);
+      --text: #e9effb;
+      --text-muted: #95a6c4;
+      --text-dim: #65758f;
+
+      --primary: #5b7cfa;
+      --primary-light: #8ea7ff;
+      --primary-dark: #3d54cc;
+      --primary-subtle: rgba(91, 124, 250, .14);
+
+      --emerald: #2dd4bf;
+      --emerald-subtle: rgba(45, 212, 191, .12);
+      --amber: #fbbf24;
+      --amber-subtle: rgba(251, 191, 36, .12);
+      --rose: #fb7185;
+      --rose-subtle: rgba(251, 113, 133, .12);
+      --cyan: #22d3ee;
+
+      --radius-sm: 10px;
+      --radius-md: 14px;
+      --radius-lg: 18px;
+      --radius-xl: 24px;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+      --shadow-md: 0 18px 40px -24px rgba(0, 0, 0, .9);
+      --shadow-lg: 0 40px 90px -40px rgba(0, 0, 0, .95);
+      --glow: 0 10px 28px -10px rgba(91, 124, 250, .8);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background:
+        radial-gradient(1200px 720px at 84% -14%, rgba(91,124,250,.20), transparent 62%),
+        radial-gradient(900px 600px at -10% 6%, rgba(34,211,238,.10), transparent 58%),
+        radial-gradient(900px 600px at 50% 112%, rgba(45,212,191,.07), transparent 60%),
+        var(--bg);
+      background-attachment: fixed;
+      color: var(--text);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      isolation: isolate;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148,163,184,.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,163,184,.045) 1px, transparent 1px);
+      background-size: 64px 64px;
+      -webkit-mask-image: radial-gradient(ellipse 90% 55% at 50% 0%, #000 10%, transparent 78%);
+      mask-image: radial-gradient(ellipse 90% 55% at 50% 0%, #000 10%, transparent 78%);
+      opacity: .55;
+    }
+
+    ::selection { background: rgba(91, 124, 250, .35); color: #fff; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: #070c16; }
+    ::-webkit-scrollbar-thumb { background: #243350; border-radius: 99px; border: 2px solid #070c16; }
+    ::-webkit-scrollbar-thumb:hover { background: #33456a; }
+
+    h1, h2, h3, h4 { font-family: 'Outfit', sans-serif; font-weight: 700; letter-spacing: -.01em; }
+
+    .container { max-width: 1380px; margin: 0 auto; padding: 28px 20px 70px; }
+
+    .top-header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(6, 10, 19, .72);
+      -webkit-backdrop-filter: blur(18px) saturate(150%);
+      backdrop-filter: blur(18px) saturate(150%);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .header-inner {
+      max-width: 1380px; margin: 0 auto; padding: 14px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 18px; flex-wrap: wrap;
+    }
+    .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .brand-logo {
+      width: 46px; height: 46px; border-radius: 15px; flex-shrink: 0;
+      display: grid; place-items: center; font-size: 19px; color: #fff;
+      background: linear-gradient(140deg, #4f6ef7 0%, #6d7cf9 45%, #22d3ee 100%);
+      box-shadow: 0 10px 26px -10px rgba(91,124,250,.85), inset 0 1px 0 rgba(255,255,255,.28);
+    }
+    .brand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .brand-text h1 { font-size: 18px; line-height: 1.3; color: #f3f7ff; display: flex; align-items: center; gap: 10px; }
+    .brand-sub { font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--text-dim); }
+    .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .header-chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 12px; font-weight: 600; color: var(--text-muted);
+      padding: 7px 12px; border-radius: 9999px;
+      background: rgba(23, 35, 58, .55); border: 1px solid var(--border);
+    }
+    .header-chip i { color: var(--primary-light); }
+    .header-chip.accent { color: var(--emerald); background: var(--emerald-subtle); border-color: rgba(45, 212, 191, .3); }
+    .header-chip.accent i { color: var(--emerald); }
+
+    .hero-card {
+      position: relative; overflow: hidden; padding: 42px 44px; margin-bottom: 28px;
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(139, 163, 255, .22);
+      background:
+        radial-gradient(720px 320px at 88% -22%, rgba(91,124,250,.42), transparent 64%),
+        radial-gradient(520px 280px at 4% 120%, rgba(34,211,238,.16), transparent 66%),
+        linear-gradient(135deg, #101a35 0%, #0b1427 58%, #080f1d 100%);
+      box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .hero-card::before, .hero-card::after {
+      content: ''; position: absolute; border-radius: 50%; pointer-events: none;
+    }
+    .hero-card::before { top: -150px; right: -90px; width: 420px; height: 420px; border: 1px solid rgba(139, 163, 255, .18); }
+    .hero-card::after { top: -70px; right: -10px; width: 280px; height: 280px; border: 1px solid rgba(34, 211, 238, .16); }
+    .hero-eyebrow {
+      position: relative; z-index: 1;
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--primary-light); padding: 6px 12px; border-radius: 9999px;
+      background: rgba(91, 124, 250, .12); border: 1px solid rgba(139, 163, 255, .28);
+    }
+    .hero-topbar {
+      position: relative; z-index: 2; display: flex; align-items: center;
+      justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
+    }
+    .dataset-picker {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 7px 8px 7px 14px; border-radius: 9999px;
+      background: rgba(255,255,255,.055); border: 1px solid rgba(139,163,255,.30);
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    }
+    .dataset-picker label {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 11px; font-weight: 700; letter-spacing: .10em;
+      text-transform: uppercase; color: #aab8d8; white-space: nowrap;
+    }
+    .dataset-picker label i { color: var(--emerald); }
+    .dataset-select {
+      appearance: none; -webkit-appearance: none;
+      background: rgba(6, 11, 20, .72) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238ea7ff' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+      color: #eef3ff; border: 1px solid rgba(125, 150, 205, .28);
+      border-radius: 9999px; padding: 9px 36px 9px 14px;
+      font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .dataset-select:hover, .dataset-select:focus {
+      outline: none; border-color: var(--primary-light);
+      box-shadow: 0 0 0 3px rgba(91,124,250,.20);
+    }
+    .dataset-select option { background: #111a2c; color: #eef3ff; }
+    .hero-card h2 {
+      position: relative; z-index: 1;
+      font-size: 32px; line-height: 1.22; letter-spacing: -.02em;
+      color: #fff; margin-bottom: 14px; max-width: 900px;
+    }
+    .hero-card p { position: relative; z-index: 1; font-size: 15px; line-height: 1.8; color: #a7b6d6; max-width: 980px; }
+    .hero-card strong { color: #dce5ff; font-weight: 600; }
+    .hero-card code {
+      font-family: 'Fira Code', monospace; font-size: 12.5px; color: #c7d2fe;
+      background: rgba(91,124,250,.14); padding: 1px 7px; border-radius: 5px;
+    }
+    .hero-tags { position: relative; z-index: 1; display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+    .hero-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(255,255,255,.045); border: 1px solid rgba(139,163,255,.22);
+      color: #c6d2ee; font-size: 12px; font-weight: 500;
+      padding: 7px 14px; border-radius: 9999px;
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    }
+    .hero-pill i { color: var(--primary-light); }
+    .hero-pill b { color: #fff; font-weight: 700; }
+
+    .card {
+      background: linear-gradient(180deg, rgba(20,30,50,.88), rgba(10,16,28,.94));
+      border-radius: var(--radius-lg); border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035), var(--shadow-md);
+      padding: 24px;
+      transition: border-color .25s, box-shadow .25s, transform .25s;
+    }
+    .card:hover {
+      border-color: rgba(139,163,255,.3);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), var(--shadow-lg);
+      transform: translateY(-2px);
+    }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+    .card-title-group h3 { font-size: 17.5px; color: #eef3ff; display: flex; align-items: center; gap: 9px; }
+    .card-subtitle { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; line-height: 1.6; }
+
+    .controls-wrapper {
+      background: linear-gradient(180deg, rgba(20,30,50,.88), rgba(10,16,28,.94));
+      border-radius: var(--radius-lg); border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035), var(--shadow-md);
+      padding: 22px 24px; margin-bottom: 24px;
+    }
+    .control-label {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .12em; color: var(--text-dim); margin-bottom: 12px;
+    }
+    .control-label i { color: var(--primary-light); }
+    .tabs-pills { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 22px; }
+    .tab-btn {
+      padding: 10px 16px; background: rgba(23, 35, 58, .55);
+      border: 1px solid var(--border); border-radius: 9999px;
+      font-size: 13px; font-weight: 600; color: var(--text-muted);
+      cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+      transition: all .2s; font-family: inherit;
+    }
+    .tab-btn:hover { background: var(--surface-hover); border-color: rgba(139,163,255,.45); color: var(--primary-light); transform: translateY(-1px); }
+    .tab-btn.active {
+      background: linear-gradient(135deg, #3d54cc, #6d7cf9);
+      border-color: rgba(139,163,255,.75); color: #fff; box-shadow: var(--glow);
+    }
+    .tab-btn .badge-pill {
+      font-size: 10px; padding: 2px 8px; border-radius: 9999px;
+      background: rgba(255,255,255,.08); color: var(--text-muted); letter-spacing: .03em;
+    }
+    .tab-btn.active .badge-pill { background: rgba(255,255,255,.22); color: #fff; }
+    .tab-btn.tab-all {
+      border-color: rgba(34,211,238,.4); color: var(--cyan);
+      background: linear-gradient(135deg, rgba(91,124,250,.16), rgba(34,211,238,.10));
+    }
+    .tab-btn.tab-all:hover { border-color: var(--cyan); color: #a5f3fc; }
+    .tab-btn.tab-all.active {
+      background: linear-gradient(135deg, #3d54cc, #0891b2);
+      border-color: rgba(34,211,238,.8); color: #fff;
+      box-shadow: 0 10px 26px -12px rgba(34,211,238,.8);
+    }
+    .k-selector-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .k-btn {
+      padding: 10px 16px; border: 1px solid var(--border);
+      background: rgba(23, 35, 58, .55); border-radius: var(--radius-md);
+      font-size: 13px; font-weight: 600; color: var(--text-muted);
+      cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+      transition: all .2s; font-family: inherit;
+    }
+    .k-btn:hover { border-color: rgba(139,163,255,.45); color: var(--primary-light); transform: translateY(-1px); }
+    .k-btn.active {
+      background: linear-gradient(135deg, #3d54cc, #6d7cf9);
+      border-color: rgba(139,163,255,.75); color: #fff; box-shadow: var(--glow);
+    }
+    .k-btn.sweet-spot { border-color: rgba(45,212,191,.45); color: var(--emerald); background: var(--emerald-subtle); }
+    .k-btn.sweet-spot.active {
+      background: linear-gradient(135deg, #0d9488, var(--emerald));
+      border-color: var(--emerald); color: #04231d;
+      box-shadow: 0 10px 26px -12px rgba(45,212,191,.85);
+    }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .metric-card {
+      background: linear-gradient(180deg, rgba(20,30,50,.88), rgba(10,16,28,.94));
+      border-radius: var(--radius-lg); border: 1px solid var(--border);
+      padding: 22px; position: relative; overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035), var(--shadow-md);
+      transition: all .25s;
+    }
+    .metric-card:hover { transform: translateY(-3px); border-color: rgba(139,163,255,.3); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), var(--shadow-lg); }
+    .metric-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--primary-dark), var(--primary-light), var(--cyan));
+    }
+    .metric-card.sweet::before { background: linear-gradient(90deg, #0d9488, var(--emerald)); }
+    .metric-card.alert::before { background: linear-gradient(90deg, #b45309, var(--amber)); }
+    .metric-title {
+      font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    .metric-val { font-size: 28px; font-family: 'Outfit', sans-serif; font-weight: 700; color: #f4f8ff; line-height: 1.08; margin-bottom: 8px; letter-spacing: -.02em; }
+    .metric-note { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
+
+    .badge-tag { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .badge-green { background: var(--emerald-subtle); color: var(--emerald); border: 1px solid rgba(45,212,191,.32); }
+    .badge-blue { background: var(--primary-subtle); color: var(--primary-light); border: 1px solid rgba(91,124,250,.38); }
+    .badge-amber { background: var(--amber-subtle); color: var(--amber); border: 1px solid rgba(251,191,36,.32); }
+    .badge-rose { background: var(--rose-subtle); color: var(--rose); border: 1px solid rgba(251,113,133,.32); }
+
+    .feature-strip {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px; padding: 15px 20px; margin-bottom: 24px;
+      border-radius: var(--radius-md); border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(20,30,50,.88), rgba(10,16,28,.94));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+    }
+    .feature-strip-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .feature-strip-label { font-size: 13px; font-weight: 700; color: #c7d3e7; display: inline-flex; align-items: center; gap: 8px; }
+    .feature-strip-label i { color: var(--primary-light); }
+    .feature-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    #parsimonyNotice { font-size: 12px; padding: 5px 11px; line-height: 1.5; }
+    .feature-chip {
+      background: var(--primary-subtle); color: var(--primary-light); font-weight: 600;
+      padding: 3px 10px; border-radius: 7px; font-size: 12px; display: inline-block;
+      border: 1px solid rgba(91,124,250,.32);
+    }
+    .feature-chip.engineered { background: rgba(34,211,238,.10); color: var(--cyan); border-color: rgba(34,211,238,.28); }
+
+    .dual-charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 24px; margin-bottom: 24px; }
+    .chart-container { position: relative; height: 340px; width: 100%; }
+    .chart-container.tall { height: 380px; }
+
+    .equation-card {
+      background: linear-gradient(120deg, rgba(91,124,250,.10), rgba(45,212,191,.05));
+      border: 1px solid rgba(139,163,255,.24);
+      border-left: 4px solid var(--primary-light);
+      border-radius: var(--radius-md); padding: 22px 24px; margin-bottom: 24px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .equation-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--primary-light); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    .equation-formula {
+      font-family: 'Fira Code', monospace; font-size: 13.5px; color: #eaf1ff; line-height: 1.95;
+      word-break: break-word; background: rgba(5, 9, 17, .65); padding: 16px 18px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border-soft);
+      max-height: 190px; overflow: auto;
+    }
+    .eq-intercept { color: #a5b4fc; font-weight: 600; }
+    .eq-var { color: #7dd3fc; font-weight: 600; }
+    .eq-pos { color: var(--emerald); font-weight: 600; }
+    .eq-neg { color: var(--rose); font-weight: 600; }
+
+    .calc-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; margin-bottom: 24px; }
+    @media (max-width: 1000px) { .calc-grid { grid-template-columns: 1fr; } }
+
+    .table-responsive { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border); background: rgba(7, 12, 22, .35); }
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; text-align: left; }
+    table.data-table thead { background: rgba(23, 35, 58, .75); border-bottom: 1px solid var(--border); }
+    table.data-table th { padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+    table.data-table td { padding: 12px 14px; border-bottom: 1px solid var(--border-soft); color: #c7d3e7; }
+    table.data-table tbody tr:last-child td { border-bottom: none; }
+    table.data-table tbody tr { transition: background .15s; }
+    table.data-table tbody tr:hover { background: rgba(91, 124, 250, .08); }
+    table.data-table tbody tr.current-row { background: rgba(45, 212, 191, .07); }
+    table.data-table tbody tr.clickable { cursor: pointer; }
+    .coef-table-wrap { max-height: 560px; overflow: auto; }
+    .coef-table-wrap table.data-table th { position: sticky; top: 0; z-index: 2; background: #16233a; }
+
+    .input-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+    @media (max-width: 560px) { .input-grid { grid-template-columns: 1fr; } }
+    .input-group { margin-bottom: 2px; transition: opacity .2s, filter .2s; }
+    .input-group.disabled { opacity: .3; filter: grayscale(.5); }
+    .input-label-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; color: #cbd6e8; }
+    .input-label-row .input-val { font-family: 'Fira Code', monospace; font-size: 12px; color: var(--primary-light); background: rgba(91,124,250,.12); padding: 1px 8px; border-radius: 6px; }
+    .range-slider { width: 100%; margin-top: 2px; accent-color: var(--primary-light); cursor: pointer; height: 18px; }
+
+    .scenario-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .scenario-btn {
+      padding: 8px 12px; border-radius: 9999px; border: 1px solid var(--border);
+      background: rgba(23, 35, 58, .6); color: var(--text-muted); font-size: 12px; font-weight: 600;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .2s; font-family: inherit;
+    }
+    .scenario-btn:hover { border-color: rgba(139,163,255,.45); color: var(--primary-light); }
+    .scenario-btn.low:hover { border-color: rgba(45,212,191,.5); color: var(--emerald); }
+    .scenario-btn.high:hover { border-color: rgba(251,113,133,.5); color: var(--rose); }
+
+    .prediction-output-box {
+      margin-top: 18px; padding: 32px; border-radius: var(--radius-lg);
+      border: 1px solid rgba(139,163,255,.24);
+      background:
+        radial-gradient(340px 180px at 88% 0%, rgba(45,212,191,.26), transparent 66%),
+        radial-gradient(300px 200px at 8% 100%, rgba(91,124,250,.18), transparent 65%),
+        linear-gradient(145deg, #132048 0%, #0a1326 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), var(--shadow-md);
+      display: flex; flex-direction: column; align-items: center; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .pred-label { font-size: 12px; font-weight: 600; letter-spacing: .14em; color: #9fb0d4; margin-bottom: 10px; text-transform: uppercase; }
+    .pred-value { font-size: 40px; font-family: 'Outfit', sans-serif; font-weight: 800; color: var(--emerald); margin-bottom: 6px; line-height: 1.1; text-shadow: 0 0 30px rgba(45,212,191,.4); letter-spacing: -.02em; }
+    .pred-percent { font-size: 13px; color: #a9b8dd; margin-bottom: 12px; }
+    .pred-interval { font-size: 13px; color: #c7d3e7; margin-bottom: 14px; font-family: 'Fira Code', monospace; }
+    .risk-meter { width: 100%; max-width: 320px; height: 8px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; margin-bottom: 14px; }
+    .risk-meter-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #2dd4bf, #fbbf24, #fb7185); transition: width .35s ease; }
+    .pred-formula-note { font-size: 11.5px; color: #8fa2c9; line-height: 1.7; word-break: break-word; }
+    .contribution-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
+    .contribution-chip { font-family: 'Fira Code', monospace; font-size: 10.5px; padding: 2px 7px; border-radius: 5px; background: rgba(255,255,255,.06); color: #b9c8e8; }
+    .contribution-chip.pos { color: #7ff0df; }
+    .contribution-chip.neg { color: #ffa9b7; }
+
+    .interval-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+    .interval-stat { font-size: 11.5px; color: var(--text-muted); background: rgba(23,35,58,.7); border: 1px solid var(--border); padding: 5px 10px; border-radius: 999px; }
+    .interval-stat b { color: #dce5ff; font-family: 'Fira Code', monospace; }
+
+    .interval-grid { display: grid; grid-template-columns: 1.65fr 1fr; gap: 24px; margin-bottom: 24px; }
+    @media (max-width: 1000px) { .interval-grid { grid-template-columns: 1fr; } }
+
+    .crisp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .crisp-card { padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--border); background: rgba(17, 26, 44, .62); }
+    .crisp-step { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--primary-light); margin-bottom: 6px; }
+    .crisp-card h4 { font-size: 15px; color: #eef3ff; margin-bottom: 8px; }
+    .crisp-card p { font-size: 12.5px; color: var(--text-muted); line-height: 1.75; }
+    .crisp-card code { font-family: 'Fira Code', monospace; font-size: 11.5px; color: #c7d2fe; background: rgba(91,124,250,.12); padding: 1px 5px; border-radius: 4px; }
+    .crisp-card ul { margin: 8px 0 0 16px; font-size: 12.5px; color: var(--text-muted); line-height: 1.8; }
+
+    .section-heading { margin: 36px 0 18px; display: flex; align-items: center; gap: 12px; }
+    .section-heading h2 { font-size: 21px; color: #f2f6ff; }
+    .section-heading span { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+    .section-heading i { color: var(--primary-light); }
+
+    footer { position: relative; z-index: 1; margin-top: 56px; background: rgba(6, 10, 19, .72); border-top: 1px solid var(--border-soft); padding: 40px 0; }
+    .footer-inner { max-width: 1380px; margin: 0 auto; padding: 0 20px; color: var(--text-muted); font-size: 13.5px; }
+    .footer-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+    .ack-card { background: rgba(17, 26, 44, .7); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 20px; margin-top: 14px; line-height: 1.7; }
+    .footer-lines > div + div { margin-top: 4px; }
+    .ack-card a { color: var(--primary-light); text-decoration: none; }
+    .ack-card code { font-family: 'Fira Code', monospace; background: rgba(91,124,250,.12); padding: 1px 6px; border-radius: 5px; color: #c7d2fe; font-size: 12px; }
+
+    @media (max-width: 768px) {
+      .brand-logo { width: 42px; height: 42px; border-radius: 13px; font-size: 17px; }
+      .brand-text h1 { font-size: 15.5px; }
+      .brand-sub { font-size: 9.5px; letter-spacing: .12em; }
+      .header-chip { font-size: 11px; padding: 6px 10px; }
+      .hero-card { padding: 28px 24px; }
+      .hero-card h2 { font-size: 24px; }
+      .hero-card p { font-size: 14px; }
+      .pred-value { font-size: 34px; }
+      .chart-container { height: 300px; }
+    }
+    @media (max-width: 520px) {
+      .container { padding: 20px 14px 56px; }
+      .header-inner { padding: 12px 14px; }
+      .header-actions { display: none; }
+      .dual-charts-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="top-header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-logo"><i class="fa-solid fa-chart-line"></i></div>
+        <div class="brand-text">
+          <h1 id="brandTitle">多元線性迴歸與特徵選擇探索器</h1>
+          <span class="brand-sub" id="brandSub">Multiple Linear Regression · Feature Selection Explorer</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="header-chip accent"><i class="fa-solid fa-circle-check"></i> CRISP-DM</span>
+        <span class="header-chip" id="headerDataset"><i class="fa-solid fa-database"></i> Kaggle S4E5</span>
+        <span class="header-chip" id="headerMethods"><i class="fa-solid fa-layer-group"></i> 5 方法 × 4 特徵數</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <section class="hero-card">
+      <div class="hero-topbar">
+        <span class="hero-eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Feature Selection Studio</span>
+        <div class="dataset-picker">
+          <label for="datasetSelect"><i class="fa-solid fa-database"></i> 選擇 Problem</label>
+          <select id="datasetSelect" class="dataset-select">
+            <option value="flood">Flood Prediction（洪水機率）</option>
+            <option value="automobile">Automobile Dataset（汽車價格）</option>
+          </select>
+        </div>
+      </div>
+      <h2 id="heroTitle">洪水機率預測：從 30 個候選特徵找出最精簡的線性模型</h2>
+      <p id="heroDesc">
+        以 <strong>Kaggle Playground S4E5</strong> 的洪水資料為例，完整走過 CRISP-DM 流程。
+        比較 <strong>SelectKBest</strong>、<strong>RFE</strong>、<strong>Sequential</strong>、
+        <strong>Lasso</strong>、<strong>Permutation Importance</strong> 五種特徵選擇方法，
+        在 <code>k = 14 / 20 / 25 / 30</code> 下訓練 <strong>Multiple Linear Regression</strong>，
+        並用 <strong>95% split conformal prediction interval</strong> 量化不確定性。
+      </p>
+      <div class="hero-tags">
+        <span class="hero-pill"><i class="fa-solid fa-database"></i> <b id="heroRows">—</b> 筆訓練資料</span>
+        <span class="hero-pill"><i class="fa-solid fa-diagram-project"></i> <span id="heroFeaturesPill">—</span></span>
+        <span class="hero-pill"><i class="fa-solid fa-star" style="color:var(--emerald);"></i> 最佳：<b id="heroBest">—</b></span>
+        <span class="hero-pill"><i class="fa-solid fa-bullseye" style="color:var(--primary-light);"></i> Test R² <b id="heroR2">—</b></span>
+      </div>
+    </section>
+
+    <div class="controls-wrapper">
+      <span class="control-label"><i class="fa-solid fa-sliders"></i> 1. 選擇特徵選擇方法</span>
+      <div class="tabs-pills" id="algoTabs"></div>
+
+      <span class="control-label" style="margin-top:12px;"><i class="fa-solid fa-list-ol"></i> 2. 特徵數量 k</span>
+      <div class="k-selector-group" id="kSelectorGroup"></div>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card" id="cardValRMSE">
+        <div class="metric-title"><span>Validation RMSE</span><span class="badge-tag badge-blue" id="badgeValRMSE">—</span></div>
+        <div class="metric-val" id="valRMSE">—</div>
+        <div class="metric-note"><span>用於 1-SE 規則選模的樣本外誤差（越低越好）</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title"><span>Validation R²</span><i class="fa-solid fa-chart-line" style="color:var(--text-dim);"></i></div>
+        <div class="metric-val" id="valR2">—</div>
+        <div class="metric-note"><span>驗證集解釋變異比例</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title"><span>Test RMSE</span><span class="badge-tag badge-blue">Hold-out</span></div>
+        <div class="metric-val" id="testRMSE">—</div>
+        <div class="metric-note"><span>15% 完全未參與訓練的測試集</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title"><span>Test R²</span><i class="fa-solid fa-bullseye" style="color:var(--text-dim);"></i></div>
+        <div class="metric-val" id="testR2">—</div>
+        <div class="metric-note"><span>官方競賽指標</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title"><span>Test MAE</span><i class="fa-solid fa-calculator" style="color:var(--text-dim);"></i></div>
+        <div class="metric-val" id="testMAE">—</div>
+        <div class="metric-note"><span>平均絕對誤差</span></div>
+      </div>
+      <div class="metric-card" id="cardCoverage">
+        <div class="metric-title"><span>95% PI Coverage</span><span class="badge-tag badge-green" id="badgeCoverage">—</span></div>
+        <div class="metric-val" id="coverage">—</div>
+        <div class="metric-note"><span>測試集實際落入信賴區間的比例</span></div>
+      </div>
+    </div>
+
+    <div class="feature-strip">
+      <div class="feature-strip-left">
+        <span class="feature-strip-label">
+          <i class="fa-solid fa-check-double"></i> 目前選用特徵（<span id="featuresCount">—</span>）
+        </span>
+        <div id="featuresListChips" class="feature-chips"></div>
+      </div>
+      <div id="parsimonyNotice" class="badge-tag badge-green">—</div>
+    </div>
+
+    <div class="dual-charts-grid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3><i class="fa-solid fa-chart-line" style="color:var(--primary-light);"></i> Validation RMSE vs 特徵數</h3>
+            <div class="card-subtitle">越低越好。點擊資料點可切換 k。</div>
+          </div>
+          <span class="badge-tag badge-blue" id="rmseChartBadge">—</span>
+        </div>
+        <div class="chart-container"><canvas id="rmseChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3><i class="fa-solid fa-arrow-trend-up" style="color:var(--emerald);"></i> Validation R² vs 特徵數</h3>
+            <div class="card-subtitle">越高越好。各方法的 1-SE 最佳 k 以綠色標示。</div>
+          </div>
+          <span class="badge-tag badge-green" id="r2ChartBadge">—</span>
+        </div>
+        <div class="chart-container"><canvas id="r2Chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="equation-card">
+      <div class="equation-title"><i class="fa-solid fa-square-root-variable"></i> 配適的 OLS 迴歸方程式（原始尺度）</div>
+      <div class="equation-formula" id="equationBox">—</div>
+    </div>
+
+    <div class="calc-grid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3><i class="fa-solid fa-table" style="color:var(--primary-light);"></i> 模型係數與統計檢定</h3>
+            <div class="card-subtitle">Estimate、標準誤、t 統計量、p 值、95% 信賴區間與 VIF 共線性診斷。</div>
+          </div>
+          <span class="badge-tag badge-blue" id="coefCountBadge">—</span>
+        </div>
+        <div class="table-responsive coef-table-wrap">
+          <table class="data-table" id="coefTable">
+            <thead>
+              <tr>
+                <th>Predictor</th><th>Estimate (β)</th><th>Std. Error</th>
+                <th>t-Stat</th><th>p-Value</th><th>95% CI</th><th>VIF</th>
+              </tr>
+            </thead>
+            <tbody id="coefTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3 id="liveTitle"><i class="fa-solid fa-calculator" style="color:var(--emerald);"></i> 即時洪水機率預測器</h3>
+            <div class="card-subtitle" id="liveSubtitle">調整 20 個原始風險因子，模型會自動計算互動特徵並即時預測。</div>
+          </div>
+          <span class="badge-tag badge-green"><i class="fa-solid fa-bolt"></i> Real-time</span>
+        </div>
+
+        <div class="scenario-row">
+          <button class="scenario-btn low" data-scenario="low"><i class="fa-solid fa-arrow-down"></i> 低風險情境</button>
+          <button class="scenario-btn" data-scenario="median"><i class="fa-solid fa-equals"></i> 中位數情境</button>
+          <button class="scenario-btn high" data-scenario="high"><i class="fa-solid fa-arrow-up"></i> 高風險情境</button>
+        </div>
+
+        <div class="input-grid" id="inputGrid"></div>
+
+        <div class="prediction-output-box">
+          <div class="pred-label" id="predLabel">Predicted FloodProbability</div>
+          <div class="pred-value" id="predValue">—</div>
+          <div class="pred-percent" id="predPercent">—</div>
+          <div class="pred-interval" id="predInterval">—</div>
+          <div class="risk-meter"><div class="risk-meter-fill" id="riskMeterFill" style="width:0%"></div></div>
+          <div class="pred-formula-note" id="predFormulaNote">—</div>
+          <div class="contribution-chips" id="contributionChips"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="interval-grid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3><i class="fa-solid fa-arrows-left-right" style="color:var(--emerald);"></i> 95% Split Conformal 預測區間</h3>
+            <div class="card-subtitle">以獨立校準集估計殘差分位數 q̂，測試集依預測值排序後呈現。</div>
+          </div>
+          <div class="interval-stats" id="intervalStats"></div>
+        </div>
+        <div class="chart-container tall"><canvas id="intervalChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3><i class="fa-solid fa-chart-column" style="color:var(--amber);"></i> 目標變數分布</h3>
+            <div class="card-subtitle" id="targetChartSubtitle">FloodProbability 在 111 萬筆訓練資料中的分布。</div>
+          </div>
+        </div>
+        <div class="chart-container tall"><canvas id="targetChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="dual-charts-grid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3><i class="fa-solid fa-crosshairs" style="color:var(--primary-light);"></i> Actual vs Predicted</h3>
+            <div class="card-subtitle">測試集抽樣 220 筆；虛線為完美預測 y = x。</div>
+          </div>
+          <span class="badge-tag badge-blue" id="parityBadge">—</span>
+        </div>
+        <div class="chart-container"><canvas id="parityChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3><i class="fa-solid fa-wave-square" style="color:var(--rose);"></i> Residual Analysis</h3>
+            <div class="card-subtitle">殘差是否隨預測值系統性偏移，檢查線性假設。</div>
+          </div>
+          <span class="badge-tag badge-amber" id="residualBadge">—</span>
+        </div>
+        <div class="chart-container"><canvas id="residualChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:24px;">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h3><i class="fa-solid fa-magnifying-glass" style="color:var(--amber);"></i> 測試集殘差與離群值診斷</h3>
+          <div class="card-subtitle">目前設定下，測試集絕對誤差最大的 12 筆樣本。</div>
+        </div>
+        <span class="badge-tag badge-blue"><i class="fa-solid fa-filter"></i> Sorted by |Residual|</span>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Rank</th><th>Sample ID</th><th>Actual</th><th>Predicted</th>
+              <th>Residual</th><th>Abs Error</th><th>% Error</th><th>Diagnostic</th>
+            </tr>
+          </thead>
+          <tbody id="outliersTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-heading">
+      <i class="fa-solid fa-flask"></i>
+      <h2>20 組特徵選擇實驗</h2>
+      <span>點擊任一列可載入該設定</span>
+    </div>
+
+    <div class="card" style="margin-bottom:24px;">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h3><i class="fa-solid fa-ranking-star" style="color:var(--primary-light);"></i> 實驗總表</h3>
+          <div class="card-subtitle">依 Validation RMSE 排序。1-SE 最佳設定以綠色標記。</div>
+        </div>
+        <span class="badge-tag badge-blue" id="experimentCountBadge">—</span>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Rank</th><th>Method</th><th>k</th><th>Val RMSE</th><th>Val R²</th>
+              <th>Test RMSE</th><th>Test R²</th><th>PI Coverage</th><th>Runtime</th>
+            </tr>
+          </thead>
+          <tbody id="experimentTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-heading">
+      <i class="fa-solid fa-diagram-project"></i>
+      <h2>CRISP-DM 流程摘要</h2>
+      <span>與 main.py 的六個階段對應</span>
+    </div>
+
+    <div class="crisp-grid">
+      <div class="crisp-card">
+        <div class="crisp-step">Phase 1 · Business Understanding</div>
+        <h4 id="crispBusinessTitle">預測洪水機率</h4>
+        <p id="crispBusiness">目標為 <code>FloodProbability</code>，官方競賽指標為 R²，並輔以 RMSE、MAE。模型選用可解釋性高的多元線性迴歸。</p>
+      </div>
+      <div class="crisp-card">
+        <div class="crisp-step">Phase 2 · Data Understanding</div>
+        <h4>資料檢查</h4>
+        <p id="crispData"><b id="crispRows">—</b> 筆訓練資料、20 個數值型風險因子，測試集 <b id="crispTest">—</b> 筆。缺失值 0、重複列 <b id="crispDup">—</b>，目標平均值約 0.504。</p>
+      </div>
+      <div class="crisp-card">
+        <div class="crisp-step">Phase 3 · Data Preparation</div>
+        <h4>特徵工程與切分</h4>
+        <p id="crispPrep">建立 10 組領域導向的互動特徵，形成 30 個候選特徵。資料切為 fit / validation / calibration / test，並以中位數補值、標準化。</p>
+        <ul><li>Fit：<span id="splitFit">—</span></li><li>Validation：<span id="splitVal">—</span></li><li>Calibration：<span id="splitCal">—</span></li><li>Test：<span id="splitTest">—</span></li></ul>
+      </div>
+      <div class="crisp-card">
+        <div class="crisp-step">Phase 4 · Modeling</div>
+        <h4 id="crispModelTitle">5 種方法 × 4 種 k</h4>
+        <p id="crispModel">SelectKBest、RFE、Sequential Forward Selection、Lasso、Permutation Importance，共 20 組實驗。每組皆以 <code>LinearRegression</code> 配適，並以 1-SE 規則在誤差接近最小值的模型中偏好較少特徵。</p>
+      </div>
+      <div class="crisp-card">
+        <div class="crisp-step">Phase 5 · Evaluation</div>
+        <h4>驗證、測試與不確定性</h4>
+        <p id="crispEvaluation">以 1-SE 規則選擇最佳設定，再於 hold-out test 計算 RMSE、MAE、R²。95% 預測區間採用 split conformal，校準集不參與模型訓練。</p>
+      </div>
+      <div class="crisp-card">
+        <div class="crisp-step">Phase 6 · Deployment</div>
+        <h4>模型產出與互動網頁</h4>
+        <p id="crispDeployment">輸出 <code>best_model.joblib</code>、<code>best_features.json</code>、<code>submission.csv</code> 與診斷圖。本頁的即時預測器直接使用匯出的原始尺度係數。</p>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-head">
+        <div>
+          <strong style="color:#dce5ff;">Multiple Linear Regression · Feature Selection Explorer</strong><br>
+          IoT 應用與資料分析 · Homework 2 · CRISP-DM End-to-End
+        </div>
+        <div style="font-size:12.5px;color:var(--text-dim);">
+          <span id="footerStats">1,117,957 rows · 20 predictors · 30 candidate features · 20 experiments</span>
+        </div>
+      </div>
+      <div class="ack-card footer-lines">
+        <div>資料來源：<a href="https://www.kaggle.com/datasets/johnwicknice/playground-series" target="_blank" rel="noopener">Kaggle Playground S4E5（Flood Prediction）</a>與&nbsp;&nbsp;<a href="https://www.kaggle.com/datasets/toramky/automobile-dataset" target="_blank" rel="noopener">Kaggle Automobile Dataset。</a></div>
+        <div>洪水模型對應<code>main.py</code>，由<code>export_web_data.py</code>匯出；汽車模型由<code>export_auto_data.py</code>匯出。</div>
+        <div>互動圖表使用 Chart.js。</div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="model_data.js"></script>
+  <script src="automobile_model_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
